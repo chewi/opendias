@@ -75,16 +75,18 @@ extern void dispatch_sane_work( int ns ) {
 
   o_log(INFORMATION, "SERVER: Sane dispatcher received the command: '%s' with param of '%s'", command, param);
 
+  if( SANE_STATUS_GOOD != sane_init(NULL, NULL) ) {
+    o_log( ERROR, "Could not start sane");
+  }
+
   if ( command && 0 == strcmp(command, "internalGetScannerList") ) {
     response = internalGetScannerList( param );
   }
   else if ( command && 0 == strcmp(command, "internalDoScanningOperation") ) {
-    inLongRunningOperation = 1;
     char *p1 = strtok(o_strdup(param), ","); // uuid
     char *p2 = strtok( NULL, ","); // lang
     response = internalDoScanningOperation( p1, p2 );
     free(p1);
-    inLongRunningOperation = 0;
   }
   else {
     response = o_strdup("");
@@ -96,7 +98,9 @@ extern void dispatch_sane_work( int ns ) {
     response = o_strdup("");
   }
   o_log(DEBUGM, "SERVER: Going to send the response of: %s", response);
-    
+
+  sane_exit();
+
   // Post the reply
   send(ns, response, strlen(response), 0);
 
@@ -140,6 +144,9 @@ char *send_command(char *command) {
     }
   }
 
+  // Lock the SANE sub-system
+  inLongRunningOperation = 1;
+
   o_log(DEBUGM, "CLIENT: The command structure has been initalised and wants to send the command of: %s.", command);
   saun.sun_family = AF_UNIX;
   strcpy(saun.sun_path, ADDRESS);
@@ -178,6 +185,9 @@ char *send_command(char *command) {
   fclose(fp);
   close(clientSocket);
   o_log(DEBUGM, "CLIENT: has closed its socket.");
+
+  // Unlock the SANE sub-system
+  inLongRunningOperation = 0;
 
   // Save a cached respone, incase we need it later
   if ( 1 == cacheResponse ) {
